@@ -1,3 +1,4 @@
 .env
+settings.json
 sessions/
 __pycache__

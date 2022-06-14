@@ -64,18 +64,21 @@ class ExtendedClient(Client):
 			"nav_chain": "1qT:feed_timeline:1,1qT:feed_timeline:2,1qT:feed_timeline:3,7Az:direct_inbox:4,7Az:direct_inbox:5,5rG:direct_thread:7",
 			"offline_threading_id": token,
 		}
+		
 		if "http" in content:
 			method = "link"
 			kwargs["link_text"] = content
 			kwargs["link_urls"] = json.dumps(re.findall(r"(https?://[^\s]+)", content))
 		else:
 			kwargs["text"] = content
+		
 		if thread_ids:
 			kwargs["thread_ids"] = json.dumps([int(tid) for tid in thread_ids])
 		if user_ids:
 			kwargs["recipient_users"] = json.dumps([[int(uid) for uid in user_ids]])
 		
 		result = self._call_api(f"direct_v2/threads/broadcast/{method}/", params=kwargs, unsigned=True)
+		return result
 
 
 class InstagramMQTT:
@@ -180,13 +183,64 @@ class InstagramMQTT:
 					# group -> badge=2 / network_classification=in_network_group_thread
 
 
-					msg_content = ':'.join(notification.message.split(':')[1:])
-					msg_author = notification.message.split(':')[0]
+					msg_thread_id = notification.actionParams['id']
 
-					print(notification.badge, notification.network_classification)
-					print(msg_content, msg_author)
+					msg_content = ':'.join(notification.message.split(':')[1:])[1:] # last [1:] remove the leading space
+					msg_author = {
+						"name": notification.message.split(':')[0],
+						"id": notification.sourceUserId
+					}
 
-					self.client.send_direct_message('Thanks for reaching out', user_ids=[notification.sourceUserId])
+					if msg_content[0] == "/": # Might be a cmd
+						if msg_content.split(' ')[0][1:] == "setlang":
+							arg = msg_content.split(' ')[1].lower()
+							if arg in self.puns.keys():
+								stgs = self.Psettings
+
+								if notification.network_classification == "in_network_canonical_thread": # PM
+									stgs[msg_author['id']] = arg
+									msg = f"You successfully set your default language to {arg.upper()}!"
+
+								elif notification.network_classification == "in_network_group_thread": # Group DM
+									stgs[msg_thread_id] = arg
+									msg = f"You successfully set chat default language to {arg.upper()}!"
+
+								else:
+									print(msg_author, msg.network_classification)
+									return #wtf
+
+
+								with open(self.get_abs_path('settings.json'), 'w') as f:
+									json.dump(stgs, f, indent=2)
+
+								self.client.send_direct_message(
+									content=msg,
+									thread_ids=[msg_thread_id]
+								)
+
+							else:
+								self.client.send_direct_message(
+									"This language is not yet supported.. Help to support it here: https://github.com/ghrlt/qfbot",
+									thread_ids=[msg_thread_id]
+								)
+
+							return
+
+
+
+					# Finding pun
+					start = msg_content.split(' ')[-1].lower()
+
+					# Get lang of user/thread
+					lang = self.Psettings.get(msg_thread_id) or self.Psettings.get(msg_author['id']) or "en"
+
+					plang = self.puns.get(lang)
+					if plang: # If language supported
+						pwords = plang.get(start)
+						if pwords: # If a pun was found
+							end = random.choice(pwords)
+
+							self.client.send_direct_message(end, thread_ids=[msg_thread_id])
 
 					
 
@@ -202,6 +256,21 @@ class InstagramMQTT:
 					print(notification)
 			else:
 				print(notification)
+
+
+	@property
+	def puns(self):
+		with open('puns.json', 'r') as f:
+			puns = json.load(f)
+
+		return puns
+
+	@property
+	def Psettings(self):
+		with open('settings.json', 'r') as f:
+			settings = json.load(f)
+
+		return settings
 
 
 
