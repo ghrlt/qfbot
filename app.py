@@ -1,7 +1,9 @@
 import os
+import re
 import json
 import time
 import pickle
+import random
 import asyncio
 import logging
 
@@ -21,7 +23,7 @@ load_dotenv()
 
 logging.basicConfig(
 	format='%(asctime)s %(levelname)-8s %(message)s',
-	level=logging.DEBUG,
+	level=logging.INFO,
 	datefmt='%Y-%m-%d %H:%M:%S'
 )
 
@@ -44,6 +46,36 @@ class ExtendedClient(Client):
 		res = self._call_api(endpoint, params=params, unsigned=True)
 		return res
 
+
+	def send_direct_message(self, content: str, user_ids: list=[], thread_ids: list=[]):
+		"""
+			Code adapted directly from adw0rd/instagrapi library
+		"""
+		assert (user_ids or thread_ids) and not (user_ids and thread_ids), "Specify user_ids or thread_ids, but not both"
+		
+		method = "text"
+		token = str(random.randint(6800011111111111111, 6800099999999999999))
+		kwargs = {
+			"action": "send_item",
+			"is_shh_mode": "0",
+			"send_attribution": "direct_thread",
+			"client_context": token,
+			"mutation_token": token,
+			"nav_chain": "1qT:feed_timeline:1,1qT:feed_timeline:2,1qT:feed_timeline:3,7Az:direct_inbox:4,7Az:direct_inbox:5,5rG:direct_thread:7",
+			"offline_threading_id": token,
+		}
+		if "http" in content:
+			method = "link"
+			kwargs["link_text"] = content
+			kwargs["link_urls"] = json.dumps(re.findall(r"(https?://[^\s]+)", content))
+		else:
+			kwargs["text"] = content
+		if thread_ids:
+			kwargs["thread_ids"] = json.dumps([int(tid) for tid in thread_ids])
+		if user_ids:
+			kwargs["recipient_users"] = json.dumps([[int(uid) for uid in user_ids]])
+		
+		result = self._call_api(f"direct_v2/threads/broadcast/{method}/", params=kwargs, unsigned=True)
 
 
 class InstagramMQTT:
@@ -71,7 +103,7 @@ class InstagramMQTT:
 		else:
 			self.settings = {}
 
-		self.client = fbns_mqtt.FBNSMQTTClient()
+		self.client = fbns_mqtt.FBNSMQTTClient() 
 
 		fbns_auth = self.settings.get('fbns_auth')
 		if fbns_auth:
@@ -99,12 +131,6 @@ class InstagramMQTT:
 		self.save_settings(self.settings)
 
 	def on_fbns_token(self, token):
-		if self.settings.get('fbns_token') == token:
-			if "fbns_token_received" in self.settings:
-				if self.settings['fbns_token_received'] > datetime.now()-timedelta(hours=24):
-					# Do not register token twice in 24 hours
-					return
-
 		device_id = self.settings.get('device_id')
 
 		try:
@@ -126,6 +152,13 @@ class InstagramMQTT:
 			)
 
 
+
+		if self.settings.get('fbns_token') == token:
+			if "fbns_token_received" in self.settings:
+				if self.settings['fbns_token_received'] > datetime.now()-timedelta(hours=24):
+					# Do not register token twice in 24 hours
+					return
+
 		self.client.register_push(token)
 
 		self.settings['fbns_token'] = token
@@ -143,7 +176,32 @@ class InstagramMQTT:
 				if notification.pushCategory == "direct_v2_text":
 					# Handle text
 
+					# solo -> badge=1 / network_classification=in_network_canonical_thread
+					# group -> badge=2 / network_classification=in_network_group_thread
+
+
+					msg_content = ':'.join(notification.message.split(':')[1:])
+					msg_author = notification.message.split(':')[0]
+
+					print(notification.badge, notification.network_classification)
+					print(msg_content, msg_author)
+
+					self.client.send_direct_message('Thanks for reaching out', user_ids=[notification.sourceUserId])
+
+					
+
+
+				elif notification.pushCategory == "direct_v2_pending":
+					pass
+
+				elif notification.pushCategory is None:
+					if notification.message.split(' ')[1] == "liked":
+						pass
+
+				else:
 					print(notification)
+			else:
+				print(notification)
 
 
 
