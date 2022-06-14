@@ -81,6 +81,40 @@ class ExtendedClient(Client):
 		return result
 
 
+	def get_direct_thread(self, thread_id: int, max_messages: int=20):
+		params = {
+			"visual_message_return_type": "unseen",
+			"direction": "older",
+			"seq_id": "40065",  # 59663
+			"limit": "20",
+		}
+		cursor = None
+		items = []
+		
+		while True:
+			if cursor:
+				params["cursor"] = cursor
+
+			result = self._call_api(
+				f"direct_v2/threads/{thread_id}/", params=params
+			)
+
+			thread = result["thread"]
+			for item in thread["items"]:
+				items.append(item)
+
+			cursor = thread.get("oldest_cursor")
+			if not cursor or (max_messages and len(items) >= max_messages):
+				break
+
+		if max_messages:
+			items = items[:max_messages]
+
+
+		thread["items"] = items
+		return thread
+
+
 class InstagramMQTT:
 	def __init__(self, username, password):
 		self.username = username
@@ -187,7 +221,7 @@ class InstagramMQTT:
 
 					msg_content = ':'.join(notification.message.split(':')[1:])[1:] # last [1:] remove the leading space
 					msg_author = {
-						"name": notification.message.split(':')[0],
+						"name": notification.message.split(':')[0].split(' ')[0],
 						"id": notification.sourceUserId
 					}
 
@@ -227,12 +261,11 @@ class InstagramMQTT:
 							return
 
 
-
 					# Finding pun
 					start = msg_content.split(' ')[-1].lower()
 
-					# Get lang of user/thread
-					lang = self.Psettings.get(msg_thread_id) or self.Psettings.get(msg_author['id']) or "en"
+					# Get lang of user/thread, default FR
+					lang = self.Psettings.get(msg_thread_id) or self.Psettings.get(msg_author['id']) or "fr"
 
 					plang = self.puns.get(lang)
 					if plang: # If language supported
@@ -243,10 +276,21 @@ class InstagramMQTT:
 							self.client.send_direct_message(end, thread_ids=[msg_thread_id])
 
 					
-
-
 				elif notification.pushCategory == "direct_v2_pending":
-					pass
+					msg_thread_id = notification.actionParams['id']
+					msg_author = {
+						"name": notification.message.split(':')[0],
+						"id": notification.sourceUserId
+					}
+
+
+					#thread = self.client.get_direct_thread(thread_id=msg_thread_id, max_messages=1)
+					#msg = thread['items'][0]
+					#msg_content = msg['text']
+
+
+					self.client.send_direct_message("Hey! I am now activated, have fun!", thread_id=[msg_thread_id])
+
 
 				elif notification.pushCategory is None:
 					if notification.message.split(' ')[1] == "liked":
@@ -254,6 +298,8 @@ class InstagramMQTT:
 
 				else:
 					print(notification)
+					print('---')
+					print(self.client.get_direct_thread(notification.actionParams['id']))
 			else:
 				print(notification)
 
