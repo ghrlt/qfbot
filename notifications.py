@@ -210,8 +210,10 @@ class InstagramNotification(object):
         self.a_fbid = _spop(data, 'a_fbid')
         self.a_url = _spop(data, 'a_url')
         self.a_t = _spop(data, 'a_t')
-
         self.mw = _spop(data, 'mw')
+        self.tp = _spop(data, 'tp')
+        self.ts = _spop(data, 'ts')
+        self.n = _spop(data, 'n')
 
         if data:
             raise Exception('InstagramNotification unexpected data: {data}'.format(**locals()))
