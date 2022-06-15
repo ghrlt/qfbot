@@ -17,12 +17,13 @@
 		"eheh": ["ehah", "eheheheh"],
 		"feu": ["rouge", "vert", "de forêt"],
 		"feur": ["ouge"],
+		"fi": ["llion", "lament", "ston", "rmament"],
 		"gae": ["tan"],
 		"genie": ["teur", "trice"],
 		"gens": ["bon"],
 		"gorge": ["profonde"],
 		"hein": ["deux", "ceste", "cestueux"],
-		"hi": ["bou", "pocondriaque"],
+		"hi": ["bou", "pocondriaque", "tler"],
 		"mal": ["ade", "adie", "aise"],
 		"ment": ["tal", "teur", "he"],
 		"moi": ["sissure", "sis", "toi", "ne"],
@@ -57,6 +58,7 @@
 		"c": ["ock"],
 		"d": ["ick"],
 		
+		"hi": ["tler"],
 		"what": ["'s your name", "are you doing step bro", "are you doing step daughter"],
 		"yes": ["terday"]
 	}
