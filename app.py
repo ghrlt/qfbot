@@ -260,7 +260,7 @@ class InstagramMQTT:
 
 							return
 
-					msg_content = message_content.strip(',;:!?.(){}[]"*') #Punctuation is no more a problem
+					msg_content = msg_content.strip(',;:!?.(){}[]"*') #Punctuation is no more a problem
 
 					# Finding pun
 					start = msg_content.split(' ')[-1].lower()
