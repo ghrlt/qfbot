@@ -1,5 +1,6 @@
 pathlib
-dotenv
+pydotenv
+python-dateutil
 instagram_private_api
 gmqtt
 thriftpy2
