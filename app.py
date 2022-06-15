@@ -289,7 +289,7 @@ class InstagramMQTT:
 					#msg_content = msg['text']
 
 
-					self.client.send_direct_message("Hey! I am now activated, have fun!", thread_id=[msg_thread_id])
+					self.client.send_direct_message("Hey! I am now activated, have fun!", thread_ids=[msg_thread_id])
 
 
 				elif notification.pushCategory is None:
