@@ -132,6 +132,17 @@ class InstagramMQTT:
 
 		return absp
 
+	def handle_disconnect(self, packet, exc=None):
+		# Reconnect
+		asyncio.ensure_future(self.reconnect_after_disconnect())
+
+	async def reconnect_after_disconnect(self):
+		logging.warning('Disconnected.. Reconnecting')
+
+		await self.listener_worker()
+
+
+
 
 	async def listener_worker(self):
 		if os.path.exists(self.get_abs_path(self.settings_file)):
@@ -141,6 +152,7 @@ class InstagramMQTT:
 			self.settings = {}
 
 		self.client = fbns_mqtt.FBNSMQTTClient() 
+		self.client.on_disconnect = self.handle_disconnect
 
 		fbns_auth = self.settings.get('fbns_auth')
 		if fbns_auth:
