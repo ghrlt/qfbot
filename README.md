@@ -32,3 +32,14 @@ cd qfbot
 
 pip install -r requirements.txt
 ```
+
+Once there, you can configure your credentials (else you will be prompted them). Open `.env` file
+```env
+ig-username=your_ig_username
+ig-password=your_ig_password
+```
+
+Then you can run the bot!
+```cmd
+python3 app.py
+```
