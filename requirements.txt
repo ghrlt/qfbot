@@ -1,5 +1,5 @@
 pathlib
-pydotenv
+python-dotenv
 python-dateutil
 instagram_private_api
 gmqtt
