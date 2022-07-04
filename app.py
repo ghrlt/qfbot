@@ -6,9 +6,9 @@ import pickle
 import random
 import asyncio
 import logging
+import pydotenv
 
 from pathlib import Path
-from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from instagram_private_api import Client, ClientCookieExpiredError, ClientLoginRequiredError
 
@@ -19,7 +19,7 @@ from notifications import InstagramNotification
 if not "sessions" in os.listdir(): os.mkdir("sessions")
 if not "settings.json" in os.listdir(): open('settings.json', 'w').write('{}')
 
-load_dotenv()
+env = pydotenv.Environment()
 
 logging.basicConfig(
 	format='%(asctime)s %(levelname)-8s %(message)s',
@@ -336,7 +336,7 @@ class InstagramMQTT:
 if __name__ == "__main__":
 	loop = asyncio.get_event_loop()
 
-	username, password = os.getenv("ig-username"), os.getenv("ig-password")
+	username, password = env.get("ig-username"), env.get("ig-password")
 	app = InstagramMQTT(username or input("Username? "), password or input("Password? "))
 
 	try:
