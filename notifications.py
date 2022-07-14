@@ -215,5 +215,7 @@ class InstagramNotification(object):
         self.ts = _spop(data, 'ts')
         self.n = _spop(data, 'n')
 
+        self.ac = _spop(data, 'ac')
+
         if data:
             raise Exception('InstagramNotification unexpected data: {data}'.format(**locals()))

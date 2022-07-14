@@ -10,14 +10,13 @@ import logging
 from pathlib import Path
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
-from instagram_private_api import Client, ClientCookieExpiredError, ClientLoginRequiredError
+from instagrapi import Client
 
 from fbns_mqtt import fbns_mqtt
 from notifications import InstagramNotification
 
 
 if not "sessions" in os.listdir(): os.mkdir("sessions")
-if not "settings.json" in os.listdir(): open('settings.json', 'w').write('{}')
 
 load_dotenv()
 
@@ -39,91 +38,31 @@ class ExtendedClient(Client):
 			phone_id=self.phone_id,
 			device_token=token,  # fbns_token
 			guid=self.uuid,
-			users=self.authenticated_user_id,
+			users=self.user_id,
 		)
-		params.update(self.authenticated_params)
 		
-		res = self._call_api(endpoint, params=params, unsigned=True)
+		res = self.private_request(endpoint, data=params, with_signature=False)
 		return res
 
 
-	def send_direct_message(self, content: str, user_ids: list=[], thread_ids: list=[]):
-		"""
-			Code adapted directly from adw0rd/instagrapi library
-		"""
-		assert (user_ids or thread_ids) and not (user_ids and thread_ids), "Specify user_ids or thread_ids, but not both"
-		
-		method = "text"
-		token = str(random.randint(6800011111111111111, 6800099999999999999))
-		kwargs = {
-			"action": "send_item",
-			"is_shh_mode": "0",
-			"send_attribution": "direct_thread",
-			"client_context": token,
-			"mutation_token": token,
-			"nav_chain": "1qT:feed_timeline:1,1qT:feed_timeline:2,1qT:feed_timeline:3,7Az:direct_inbox:4,7Az:direct_inbox:5,5rG:direct_thread:7",
-			"offline_threading_id": token,
-		}
-		
-		if "http" in content:
-			method = "link"
-			kwargs["link_text"] = content
-			kwargs["link_urls"] = json.dumps(re.findall(r"(https?://[^\s]+)", content))
-		else:
-			kwargs["text"] = content
-		
-		if thread_ids:
-			kwargs["thread_ids"] = json.dumps([int(tid) for tid in thread_ids])
-		if user_ids:
-			kwargs["recipient_users"] = json.dumps([[int(uid) for uid in user_ids]])
-		
-		result = self._call_api(f"direct_v2/threads/broadcast/{method}/", params=kwargs, unsigned=True)
-		return result
-
-
-	def get_direct_thread(self, thread_id: int, max_messages: int=20):
-		params = {
-			"visual_message_return_type": "unseen",
-			"direction": "older",
-			"seq_id": "40065",  # 59663
-			"limit": "20",
-		}
-		cursor = None
-		items = []
-		
-		while True:
-			if cursor:
-				params["cursor"] = cursor
-
-			result = self._call_api(
-				f"direct_v2/threads/{thread_id}/", params=params
-			)
-
-			thread = result["thread"]
-			for item in thread["items"]:
-				items.append(item)
-
-			cursor = thread.get("oldest_cursor")
-			if not cursor or (max_messages and len(items) >= max_messages):
-				break
-
-		if max_messages:
-			items = items[:max_messages]
-
-
-		thread["items"] = items
-		return thread
-
-
-class InstagramMQTT:
+class InstagramMQTT(ExtendedClient):
 	def __init__(self, username, password):
-		self.username = username
-		self.password = password
+		session = {}
+		self.Psettings = {}
+		if os.path.exists('settings.json'):
+			self.Psettings = json.load(open('settings.json'))
+			session = self.Psettings['api_settings']
 
-		self.settings_file = Path(f"sessions/{self.username}_mqtt.pkl")
+		super().__init__(session)
+		self.login(username, password)
 
+		self.settings_file = Path(f"sessions/{username}_mqtt.pkl")
 
-	def save_settings(self, data):
+	def save_settings(self):
+		with open(self.get_abs_path('settings.json'), 'w') as f:
+			json.dump(self.get_settings(), f, indent=2)
+
+	def save_fbns_settings(self, data):
 		with open(self.settings_file, 'wb') as f:
 			pickle.dump(data, f)
 	
@@ -140,9 +79,6 @@ class InstagramMQTT:
 		logging.warning('Disconnected.. Reconnecting')
 
 		await self.listener_worker()
-
-
-
 
 	async def listener_worker(self):
 		if os.path.exists(self.get_abs_path(self.settings_file)):
@@ -162,7 +98,6 @@ class InstagramMQTT:
 		self.client.on_fbns_token = self.on_fbns_token
 		self.client.on_fbns_message = self.on_fbns_message
 
-
 		await self.client.connect('mqtt-mini.facebook.com', 443, ssl=True, keepalive=900)
 		await STOP.wait()
 		await self.client.disconnect()
@@ -171,36 +106,16 @@ class InstagramMQTT:
 		self.settings['api_settings'] = client.settings
 		self.client = client
 
-		self.save_settings(self.settings)
+		self.save_fbns_settings(self.settings)
 
 	def on_fbns_auth(self, auth):
 		self.settings['fbns_auth'] = auth
 		self.settings['fbns_auth_received'] = datetime.now()
 		
-		self.save_settings(self.settings)
+		self.save_fbns_settings(self.settings)
 
 	def on_fbns_token(self, token):
 		device_id = self.settings.get('device_id')
-
-		try:
-			if self.settings.get('api_settings'):
-				self.client = ExtendedClient(
-					self.username, self.password,
-					settings=self.settings.get('api_settings')
-				)
-			else:
-				self.client = ExtendedClient(
-					self.username, self.password,
-					on_login=self.on_login_callback
-				)
-
-		except (ClientCookieExpiredError, ClientLoginRequiredError) as e:
-			self.client = ExtendedClient(
-				self.username, self.password,
-				device_id=device_id, on_login=self.on_login_callback
-			)
-
-
 
 		if self.settings.get('fbns_token') == token:
 			if "fbns_token_received" in self.settings:
@@ -208,11 +123,11 @@ class InstagramMQTT:
 					# Do not register token twice in 24 hours
 					return
 
-		self.client.register_push(token)
+		self.register_push(token)
 
 		self.settings['fbns_token'] = token
 		self.settings['fbns_token_received'] = datetime.now()
-		self.save_settings(self.settings)
+		self.save_fbns_settings(self.settings)
 
 	def on_fbns_message(self, push):
 		if push.payload:
@@ -255,17 +170,15 @@ class InstagramMQTT:
 									print(msg_author, msg.network_classification)
 									return #wtf
 
+								self.save_settings()
 
-								with open(self.get_abs_path('settings.json'), 'w') as f:
-									json.dump(stgs, f, indent=2)
-
-								self.client.send_direct_message(
-									content=msg,
+								self.direct_send(
+									msg,
 									thread_ids=[msg_thread_id]
 								)
 
 							else:
-								self.client.send_direct_message(
+								self.direct_send(
 									"This language is not yet supported.. Help to support it here: https://github.com/ghrlt/qfbot",
 									thread_ids=[msg_thread_id]
 								)
@@ -286,7 +199,7 @@ class InstagramMQTT:
 						if pwords: # If a pun was found
 							end = random.choice(pwords)
 
-							self.client.send_direct_message(end, thread_ids=[msg_thread_id])
+							self.direct_send(end, thread_ids=[msg_thread_id])
 
 					
 				elif notification.pushCategory == "direct_v2_pending":
@@ -302,7 +215,7 @@ class InstagramMQTT:
 					#msg_content = msg['text']
 
 
-					self.client.send_direct_message("Hey! I am now activated, have fun!", thread_ids=[msg_thread_id])
+					self.direct_send("Hey! I am now activated, have fun!", thread_ids=[msg_thread_id])
 
 
 				elif notification.pushCategory is None:
@@ -323,15 +236,6 @@ class InstagramMQTT:
 			puns = json.load(f)
 
 		return puns
-
-	@property
-	def Psettings(self):
-		with open('settings.json', 'r') as f:
-			settings = json.load(f)
-
-		return settings
-
-
 
 if __name__ == "__main__":
 	loop = asyncio.get_event_loop()
